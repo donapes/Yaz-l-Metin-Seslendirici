@@ -8,10 +8,10 @@ import tempfile
 import re
 
 # Sayfa Yapılandırması
-st.set_page_config(page_title="Profesyonel Mevzuat Seslendirici", page_icon="🎙️", layout="wide")
+st.set_page_config(page_title="Profesyonel Hukuki Mevzuat Seslendirici", page_icon="🎙️", layout="wide")
 
-st.title("🎙️ Profesyonel Mevzuat Seslendirici (Madde Madde Bölümlü)")
-st.markdown("Kanun ve yönetmeliklerinizi doğal spiker sesiyle dinleyin; **maddelere göre kolayca gezinin**.")
+st.title("🎙️ Profesyonel Mevzuat Seslendirici & Hukuki Asistan")
+st.markdown("Kanun ve yönetmeliklerinizi doğal spiker sesiyle dinleyin; **madde başlıkları ve arama özelliğiyle** aradığınızı anında bulun.")
 
 # Yan Menü - Ses ve Hız Ayarları
 st.sidebar.header("⚙️ Ses Ayarları")
@@ -45,40 +45,52 @@ def word_oku(file):
     doc = docx.Document(file)
     return "\n".join([p.text for p in doc.paragraphs if p.text])
 
+def metni_temizle_ve_iyilestir(metin):
+    """Hukuki kısaltmaları ve ses motorunun takıldığı yerleri düzenler."""
+    metin = re.sub(r'\bmd\.\b', 'madde', metin, flags=re.IGNORECASE)
+    metin = re.sub(r'\bfık\.\b', 'fıkra', metin, flags=re.IGNORECASE)
+    metin = re.sub(r'\bs\.?\s*sayılı\b', 'sayılı', metin, flags=re.IGNORECASE)
+    return metin
+
 def maddelere_ayir(metin):
-    """Metni 'MADDE X' veya 'Madde X' kalıplarına göre parçalara böler."""
+    """Metni maddelere böler ve her maddeye açıklayıcı başlık çıkarır."""
     pattern = r'(?=(?:MADDE|Madde)\s+\d+)'
     parcalar = re.split(pattern, metin)
     
     maddeler = []
     for i, p in enumerate(parcalar):
         if p.strip():
-            satirlar = p.strip().split('\n')
-            baslik = satirlar[0][:60] if satirlar else f"Bölüm {i+1}"
-            if not ("madde" in baslik.lower() or "bölüm" in baslik.lower() or "kısım" in baslik.lower()):
-                baslik = f"Giriş / Genel Metin {i}"
+            satirlar = [s.strip() for s in p.strip().split('\n') if s.strip()]
+            madde_adi = satirlar[0] if satirlar else f"Bölüm {i+1}"
+            
+            # Eğer ilk satır çok kısaysa, ikinci satırı da birleştirerek ne hakkı olduğunu anlamaya çalışalım
+            if len(satirlar) > 1 and len(madde_adi) < 25:
+                madde_adi = f"{satirlar[0]} - {satirlar[1][:50]}"
+            else:
+                madde_adi = madde_adi[:75]
+                
             maddeler.append({
                 "id": i,
-                "baslik": baslik,
+                "baslik": madde_adi,
                 "metin": p.strip()
             })
     return maddeler
 
 async def sese_cevir(metin, cikis_dosyasi, ses, hiz):
-    communicate = edge_tts.Communicate(metin, ses, rate=hiz)
+    temiz_metin = metni_temizle_ve_iyilestir(metin)
+    communicate = edge_tts.Communicate(temiz_metin, ses, rate=hiz)
     await communicate.save(cikis_dosyasi)
 
 if uploaded_file is not None:
     ext = uploaded_file.name.split(".")[-1].lower()
-    with st.spinner("📄 Mevzuat metni taranıyor ve maddelere ayrılıyor..."):
+    with st.spinner("📄 Mevzuat metni taranıyor, maddeler ve başlıklar analiz ediliyor..."):
         ham_metin = pdf_oku(uploaded_file) if ext == "pdf" else word_oku(uploaded_file)
 
     if ham_metin.strip():
         maddeler_listesi = maddelere_ayir(ham_metin)
-        st.success(f"✅ Dosya başarıyla okundu! Toplam {len(maddeler_listesi)} adet madde/bölüm tespit edildi.")
+        st.success(f"✅ Dosya başarıyla okundu! Toplam {len(maddeler_listesi)} adet madde tespit edildi.")
 
-        # Sekmeler oluştur: 1. Tüm Kanun, 2. Madde Madde İnceleme
-        tab1, tab2 = st.tabs(["🎧 Tüm Kanunu Dinle / İndir", "📑 Madde Madde Gezin ve Dinle"])
+        tab1, tab2 = st.tabs(["🎧 Tüm Kanunu Dinle / İndir", "📑 Madde Arama ve Nokta Atışı Dinleme"])
 
         # TAB 1: Tüm Kanun
         with tab1:
@@ -101,43 +113,54 @@ if uploaded_file is not None:
                     except Exception as e:
                         st.error(f"Hata oluştu: {e}")
 
-        # TAB 2: Madde Madde Gezinme
+        # TAB 2: Madde Arama ve Dinleme
         with tab2:
-            st.subheader("Kanun Maddeleri İçindekiler")
-            st.markdown("Aşağıdan tekrar dinlemek istediğiniz maddeyi seçebilir ve sadece o maddeyi seslendirebilirsiniz:")
+            st.subheader("Madde İçinde Arama ve Seçmeli Dinleme")
             
-            # Seçim kutusu için madde başlıkları
-            secilen_madde_baslik = st.selectbox(
-                "Dinlemek istediğiniz maddeyi seçin:",
-                [m["baslik"] for m in maddeler_listesi]
-            )
+            # Arama Çubuğu
+            arama_sorgusu = st.text_input("🔍 Anahtar Kelime ile Madde Ara (Örn: yasak, av, ceza, izin):", "")
             
-            # Seçilen maddeyi bul
-            secilen_madde = next((m for m in maddeler_listesi if m["baslik"] == secilen_madde_baslik), None)
-            
-            if secilen_madde:
-                st.info(f"**Seçilen Madde Önizlemesi:**\n\n{secilen_madde['metin'][:400]}...")
+            # Filtreleme
+            if arama_sorgusu.strip():
+                filtrelenmis_maddeler = [m for m in maddeler_listesi if arama_sorgusu.lower() in m["metin"].lower()]
+                st.info(f"'{arama_sorgusu}' kelimesi için {len(filtrelenmis_maddeler)} madde bulundu.")
+            else:
+                filtrelenmis_maddeler = maddeler_listesi
+
+            if filtrelenmis_maddeler:
+                secilen_baslik = st.selectbox(
+                    "İncelemek/Dinlemek istediğiniz maddeyi seçin:",
+                    [m["baslik"] for m in filtrelenmis_maddeler]
+                )
                 
-                if st.button("🎧 Seçilen Maddeyi Seslendir", type="primary", key="btn_tek"):
-                    with st.spinner("Seçilen madde seslendiriliyor..."):
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_tek:
-                            tmp_tek_path = tmp_tek.name
-                        
-                        try:
-                            asyncio.run(sese_cevir(secilen_madde["metin"], tmp_tek_path, selected_voice, selected_rate))
-                            st.success("🎉 Madde seslendirildi!")
+                secilen_madde = next((m for m in filtrelenmis_maddeler if m["baslik"] == secilen_baslik), None)
+                
+                if secilen_madde:
+                    st.markdown(f"**Seçilen Madde İçeriği:**")
+                    st.text_area("Metin Önizlemesi", secilen_madde['metin'], height=150)
+                    
+                    if st.button("🎧 Bu Maddeyi Seslendir", type="primary", key="btn_tek_gelismis"):
+                        with st.spinner("Seçilen madde seslendiriliyor..."):
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_tek:
+                                tmp_tek_path = tmp_tek.name
                             
-                            with open(tmp_tek_path, "rb") as f:
-                                tek_audio_bytes = f.read()
-                            
-                            st.audio(tek_audio_bytes, format="audio/mp3")
-                            st.download_button(
-                                "📥 Bu Maddeyi MP3 Olarak İndir", 
-                                data=tek_audio_bytes, 
-                                file_name=f"madde_{secilen_madde_baslik[:20]}.mp3".replace(" ", "_"), 
-                                mime="audio/mp3"
-                            )
-                        except Exception as e:
-                            st.error(f"Hata oluştu: {e}")
+                            try:
+                                asyncio.run(sese_cevir(secilen_madde["metin"], tmp_tek_path, selected_voice, selected_rate))
+                                st.success("🎉 Madde başarıyla seslendirildi!")
+                                
+                                with open(tmp_tek_path, "rb") as f:
+                                    tek_audio_bytes = f.read()
+                                
+                                st.audio(tek_audio_bytes, format="audio/mp3")
+                                st.download_button(
+                                    "📥 Bu Maddeyi MP3 Olarak İndir", 
+                                    data=tek_audio_bytes, 
+                                    file_name=f"madde_{secilen_baslik[:15]}.mp3".replace(" ", "_"), 
+                                    mime="audio/mp3"
+                                )
+                            except Exception as e:
+                                st.error(f"Hata oluştu: {e}")
+            else:
+                st.warning("Aradığınız kritere uygun madde bulunamadı.")
     else:
         st.warning("⚠️ Dosya içeriğinde okunabilir metin bulunamadı.")
