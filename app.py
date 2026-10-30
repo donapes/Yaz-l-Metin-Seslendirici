@@ -8,29 +8,30 @@ import tempfile
 import re
 
 # Sayfa Yapılandırması
-st.set_page_config(page_title="Profesyonel Hukuki Mevzuat Seslendirici", page_icon="🎙️", layout="wide")
+st.set_page_config(page_title="Hukuki Mevzuat Seslendirici - Canlı Ses", page_icon="🎧", layout="wide")
 
-st.title("🎙️ Profesyonel Mevzuat Seslendirici & Hukuki Asistan (İnsan Vurgulu)")
-st.markdown("Kanun ve yönetmeliklerinizi **robotik tonlardan arındırılmış, profesyonel spiker diksiyonuyla** dinleyin.")
+st.title("🎧 Mevzuat Seslendirici (Sempatik & Akıcı İnsan Sesi)")
+st.markdown("Kanun ve yönetmeliklerinizi **robotik tonlardan uzak, sempatik, yumuşak ve akıcı** spiker sesiyle dinleyin.")
 
-# Yan Menü - Ses ve Hız Ayarları
-st.sidebar.header("⚙️ Ses Ayarları")
+# Yan Menü - Tatlı ve Doğal Ses Seçenekleri
+st.sidebar.header("⚙️ Ses ve Vurgu Ayarları")
 voice_choice = st.sidebar.selectbox(
-    "Ses Karakteri (Spiker Diksiyonu):",
-    ("Ahmet (Tok / Erkek - Doğal)", "Emel (Duru / Kadın - Doğal)")
+    "Ses Karakteri (Tatlı / Sempatik Diksiyon):",
+    ("Seda (Sempatik / Yumuşak - Kadın)", "Emel (Duru / Doğal - Kadın)", "Ahmet (Tok / Erkek)")
 )
 
 voice_map = {
-    "Ahmet (Tok / Erkek - Doğal)": "tr-TR-AhmetNeural",
-    "Emel (Duru / Kadın - Doğal)": "tr-TR-EmelNeural"
+    "Seda (Sempatik / Yumuşak - Kadın)": "tr-TR-SedaNeural",
+    "Emel (Duru / Doğal - Kadın)": "tr-TR-EmelNeural",
+    "Ahmet (Tok / Erkek)": "tr-TR-AhmetNeural"
 }
 selected_voice = voice_map[voice_choice]
 
-hiz_secimi = st.sidebar.selectbox("Okuma Hızı:", ("Normal / Akıcı (1.0x)", "Biraz Yavaş / Sindirerek (0.9x)", "Hızlı (1.1x)"))
+hiz_secimi = st.sidebar.selectbox("Okuma Hızı:", ("Normal / Rahat Dinleme (1.0x)", "Biraz Yavaş / Sindirerek (0.9x)", "Akıcı / Hızlı (1.1x)"))
 rate_map = {
-    "Normal / Akıcı (1.0x)": "+0%",
+    "Normal / Rahat Dinleme (1.0x)": "+0%",
     "Biraz Yavaş / Sindirerek (0.9x)": "-8%",
-    "Hızlı (1.1x)": "+10%"
+    "Akıcı / Hızlı (1.1x)": "+10%"
 }
 selected_rate = rate_map[hiz_secimi]
 
@@ -45,26 +46,28 @@ def word_oku(file):
     doc = docx.Document(file)
     return "\n".join([p.text for p in doc.paragraphs if p.text])
 
-def metni_insansilestir_ve_duzenle(metin):
+def metni_tatli_ve_akici_yap(metin):
     """
-    Yapay zekanın robotik okumasını engellemek, hece yutmasını önlemek 
-    ve insansı vurgular kazandırmak için metni hukuki diksiyona uyarlar.
+    Robotik okumayı ve hece yutmayı engellemek için metni insani 
+    duraklamalarla ve yumuşak geçişlerle optimize eder.
     """
-    # Gereksiz fazla boşlukları ve satır sonu bölünmelerini temizle
+    # Fazla boşlukları temizle
     metin = re.sub(r'\s+', ' ', metin)
     
-    # Hukuki kısaltmaları açık ve akıcı okunacak şekilde düzenle
+    # Hukuki kısaltmaları kulağı tırmalamayacak şekilde açık kelimelere çevir
     metin = re.sub(r'\bmd\.\s*', 'madde ', metin, flags=re.IGNORECASE)
     metin = re.sub(r'\bfık\.\s*', 'fıkrası, ', metin, flags=re.IGNORECASE)
     metin = re.sub(r'\bbknz\.\s*', 'bakınız, ', metin, flags=re.IGNORECASE)
+    metin = re.sub(r'(\d+)\s*sayılı', r'\1 sayılı', metin)
     
-    # Madde başlıklarının robotik okunmasını engellemek için araya duraklama hissi katacak ekleme
-    metin = re.sub(r'(MADDE\s+\d+[\s\-]*)', r'\n\n \1. \n ', metin, flags=re.IGNORECASE)
-    metin = re.sub(r'(Madde\s+\d+[\s\-]*)', r'\n\n \1. \n ', metin, flags=re.IGNORECASE)
+    # Madde başlıklarında yapay zekanın nefes alması için hafif duraklama ekleyelim
+    metin = re.sub(r'(MADDE\s+\d+[\s\-]*)', r'\n\n... \1 ...\n', metin, flags=re.IGNORECASE)
+    metin = re.sub(r'(Madde\s+\d+[\s\-]*)', r'\n\n... \1 ...\n', metin, flags=re.IGNORECASE)
     
-    # Noktalama işaretlerinden sonra yapay zekanın nefes alması için boşlukları düzenle
+    # Noktalama işaretlerinden sonra sesin doğal akması için boşluk bırak
     metin = metin.replace(';', '; ')
     metin = metin.replace(':', ': ')
+    metin = metin.replace('.', '. ')
     
     return metin
 
@@ -91,13 +94,13 @@ def maddelere_ayir(metin):
     return maddeler
 
 async def sese_cevir(metin, cikis_dosyasi, ses, hiz):
-    islenmis_metin = metni_insansilestir_ve_duzenle(metin)
+    islenmis_metin = metni_tatli_ve_akici_yap(metin)
     communicate = edge_tts.Communicate(islenmis_metin, ses, rate=hiz)
     await communicate.save(cikis_dosyasi)
 
 if uploaded_file is not None:
     ext = uploaded_file.name.split(".")[-1].lower()
-    with st.spinner("📄 Mevzuat metni taranıyor ve insan sesine uygun formata dönüştürülüyor..."):
+    with st.spinner("📄 Mevzuat metni taranıyor, sempatik ve akıcı ses için hazırlanıyor..."):
         ham_metin = pdf_oku(uploaded_file) if ext == "pdf" else word_oku(uploaded_file)
 
     if ham_metin.strip():
@@ -108,9 +111,9 @@ if uploaded_file is not None:
 
         # TAB 1: Tüm Kanun
         with tab1:
-            st.subheader("Tüm Mevzuat Metni (Spiker Diksiyonu)")
-            if st.button("🎙️ Tüm Kanunu Akıcı Seslendir (MP3 Üret)", type="primary", key="btn_tum"):
-                with st.spinner("Yapay zeka spiker metni doğal vurgularla seslendiriyor, lütfen bekleyin..."):
+            st.subheader("Tüm Mevzuat Metni (Sempatik & Akıcı Ses)")
+            if st.button("🎙️ Tüm Kanunu Yumuşak Sesle Dinle (MP3 Üret)", type="primary", key="btn_tum"):
+                with st.spinner("Yapay zeka seslendiriyor, lütfen bekleyin..."):
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
                         tmp_path = tmp.name
                     
@@ -122,14 +125,14 @@ if uploaded_file is not None:
                             audio_bytes = f.read()
                         
                         st.audio(audio_bytes, format="audio/mp3")
-                        cikis_adi = uploaded_file.name.rsplit(".", 1)[0] + "_insansi_sesli.mp3"
+                        cikis_adi = uploaded_file.name.rsplit(".", 1)[0] + "_sempatik_sesli.mp3"
                         st.download_button("📥 MP3 Dosyasını İndir", data=audio_bytes, file_name=cikis_adi, mime="audio/mp3")
                     except Exception as e:
                         st.error(f"Hata oluştu: {e}")
 
         # TAB 2: Madde Arama ve Dinleme
         with tab2:
-            st.subheader("Madde İçinde Arama ve Nokta Atışı Dinleme")
+            st.subheader("Madde İçinde Arama ve Seçmeli Dinleme")
             
             arama_sorgusu = st.text_input("🔍 Anahtar Kelime ile Madde Ara (Örn: av, ceza, izin, yasak):", "")
             
@@ -151,8 +154,8 @@ if uploaded_file is not None:
                     st.markdown(f"**Seçilen Madde İçeriği:**")
                     st.text_area("Metin Önizlemesi", secilen_madde['metin'], height=150)
                     
-                    if st.button("🎧 Bu Maddeyi Akıcı Seslendir", type="primary", key="btn_tek_gelismis"):
-                        with st.spinner("Seçilen madde insani tonlamalarla seslendiriliyor..."):
+                    if st.button("🎧 Bu Maddeyi Yumuşak Sesle Dinle", type="primary", key="btn_tek_sempatik"):
+                        with st.spinner("Seçilen madde sempatik tonlamayla seslendiriliyor..."):
                             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_tek:
                                 tmp_tek_path = tmp_tek.name
                             
